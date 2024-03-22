@@ -1,0 +1,205 @@
+---
+title: "Modelo de regresión para la predicción de precios de automóviles"
+subtitle: "Data science essential training"
+author: "DiplomadosOnline.com"
+date: "Mayo, 2022"
+output:
+    rmarkdown::html_document:
+      theme: lumen
+      toc: true
+      toc_depth: 2
+      toc_float: true
+---
+
+El problema que resolveremos en estos entregables es la predicción del precio de un automobil. Supongamos que tenemos un sitio web donde la gente puede vender y comprar autos usados. Al publicar un anuncio en nuestro sitio web, los vendedores a menudo luchan por conseguir un precio significativo.
+
+Queremos ayudar a nuestros usuarios con recomendaciones automáticas de precios. Pedimos a los vendedores que especifiquen el modelo, la marca, el año, el kilometraje y otras características importantes del auto, y con esta información, queremos sugerir el mejor precio.
+
+# 1) Análisis exporatorio de 
+
+## 1.1. Carga y preparación de los datos
+
+Vamos a utilizar el set de datos identificado como `data.csv`, en el cual, se encuentra la información de los vehículos vendido.
+
+```{r}
+df = read.csv("data.csv", sep=",", header = TRUE)
+head(df)
+```
+
+```{r}
+dim(df)
+```
+
+Al inspeccionar los datos notamos que hay algunas inconsistencias en este conjunto de datos: los nombres de las columnas a veces tienen espacios, ya veces tienen guiones bajos ( _ ). Lo mismo ocurre con los valores de las caracterìsticas: a veces están en mayásculas, y a veces son cadenas cortas con espacios. Esto es incómodo y confuso, pero podemos solucionarlo normalizando, es decir,
+
+```{r}
+library(janitor)
+df = clean_names(df)
+head(df)
+```
+
+```{r}
+df$model <- gsub(" ", "_", df$model)
+df$engine_fuel_type <- gsub(" ", "_", df$engine_fuel_type)
+df$driven_wheels <- gsub(" ", "_", df$driven_wheels)
+head(df)
+```
+
+## 1.2 Análisis de variables objetivo
+
+Como vemos, este conjunto de datos contiene mùltiples columnas:
+
+- marca(make): marca del coche (BMW, Toyota, etc.)
+
+- modelo(model): modelo de coche
+
+- año(year): año de fabricación del coche
+
+- tipo_de_combustible_del_motor(engine_fuel_type): tipo de combustible que necesita el motor (diesel, elèctrico, etc.)
+
+- engine_hp : potencia del motor
+
+- engine_cylinders: nùmero de cilindros del motor
+
+- tipo_de_transmisión (transmission_type): tipo de transmisión (automótica o manual)
+
+- ruedas motrices (driven_wheels): delanteras, traseras, todas
+
+- número_de_puertas(number_of_doors): número de puertas que tiene el coche
+
+- categoría_de_mercado(market_category): lujo, crossover, etc.
+
+- tamaño_del_vehículo(vehicle_size): compacto, mediano o grande
+
+- estilo_del_vehículo(vehicle_style): sedan o descapotable
+
+- highway_mpg: millas por galón (mpg) en carretera
+
+- city_mpg: millas por galón en la ciudad
+
+- popularidad (popularity): número de veces que se menciona el coche en una corriente de Twitter
+
+- msrp: precio de venta sugerido por el fabricante
+
+La columna MSRP (precio de venta al público sugerido por el fabricante) es nuestra variable objetivo, es decir, es el valor que queremos aprender a predecir.
+
+Uno de los primeros pasos del análisis exploratorio de datos debera ser siempre mirar còmo son los valores de y (MSRP). Para ello, solemos comprobar la distribución de y(descripción visual de los posibles valores de y) y la frecuencia con la que se producen.
+
+Utilice Seaborn o Matplotlib para trazar un histograma de la varible objetivo.
+
+**Entrenamiento**
+
+Realice un histograma para la varible objetivo.
+
+Luego de graficar los datos, ¿qué observa?. Explique.
+
+¿Es posible mejorar la visualización de los datos?, en caso afirmativo, explique por quÃ©.
+
+```{r}
+hist(df$msrp, freq = TRUE)
+```
+
+A los datos será necesaria realizarle la siguiente transformación,
+
+\[y_{nueva} = \log(y+1)\]
+
+**Entrenamiento**:
+
+Explique por què es necesaria esta transformación.
+
+Aplique la función `log1p()`
+
+Realice el histograma para los datos transformados y compare con el histograma anterior.¿Qué observa?
+
+```{r}
+log_price = log1p(df$msrp)
+hist(log_price, freq = TRUE)
+```
+
+## 1.3 Valores faltantes
+
+Comprobemos si hay valores faltantes o perdidos en los datos. Este paso es importante porque, normalmente, los modelos de aprendizaje automático no pueden tratar los valores faltantes automáticamente.
+
+En R lo hacemos de la forma siguiente:
+
+```{r}
+sapply(df, function(x) sum(is.na(x)))
+```
+
+**Entrenamiento**:
+
+¿Qué observa de la salida de la función aplicada?
+
+## 1.4 División de los datos
+
+Tenemos que dividir el conjunto de datos en tres partes: entrenamiento, validaciòn y prueba.
+
+Vamos a dividir el conjunto de datos de manera que
+
+- El 20 % de los datos va a la validaciòn.
+
+
+- El 20 % va a la prueba.
+
+
+- El 60 % restante va a entrenamiento.
+
+
+Esto lo hacemos mediante el siguiente còdigo:
+
+```{r}
+set.seed(1234)
+trvaltest <- function(dat,prop = c(0.6,0.2,0.2)){
+  nrw = nrow(dat)
+  trnr = as.integer(nrw *prop[1])
+  vlnr = as.integer(nrw*prop[2])
+  set.seed(123)
+  trni = sample(1:nrow(dat),trnr)
+  trndata = dat[trni,]
+  rmng = dat[-trni,]
+  vlni = sample(1:nrow(rmng),vlnr)
+  valdata = rmng[vlni,]
+  tstdata = rmng[-vlni,]
+  mylist = list("trn" = trndata,"val"= valdata,"tst" = tstdata)
+  return(mylist)
+}
+outdata = trvaltest(df,prop = c(0.6,0.2,0.2))
+df_train = outdata$trn; df_val = outdata$val; df_test = outdata$tst
+```
+```{r}
+head(df_train)
+```
+
+**Entrenamiento**:
+
+Explique brevemente qué se está realizando en cada linea.
+
+Realice una transformación logaritmica a los datos de entrenamiento, validación y prueba para la varible objetivo, y guardelo en la variables y_train, y_val, y_test, por ejemplo, y_train = log1p(df_train$msrp)
+
+¿Qué se hizo en este caso?
+
+Elimine de df_train, df val, df test, la variable objetivo. ¿Por qué hacemos esto?
+
+```{r}
+library(dplyr)
+y_train_orig =  select(df_train, msrp)
+y_val_orig = select(df_val, msrp)
+y_test_orig = select(df_test, msrp)
+```
+
+```{r}
+y_train = log1p(y_train_orig)
+y_val = log1p(y_val_orig)
+y_test = log1p(y_test_orig)
+```
+
+```{r}
+df_train <- df_train[ ,!colnames(df_train)=="msrp"]
+df_val <- df_val[ ,!colnames(df_val)=="msrp"]
+df_test <- df_test[ ,!colnames(df_test)=="msrp"]
+```
+
+
+
+
+
