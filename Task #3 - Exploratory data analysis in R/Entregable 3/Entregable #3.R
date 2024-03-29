@@ -15,7 +15,6 @@ string_columns <- sapply(df, is.character)
 df[string_columns] <- lapply(df[string_columns], function(col) {
   col <- trimws(col) # Elimina espacios al inicio y al final
   col <- tolower(col) # Convierte a minúsculas
-  col <- gsub(" ", "_", col) # Reemplaza espacios por guiones bajos
   return(col)
 })
 
@@ -106,13 +105,13 @@ str(df)
 # Para el siguiente ejercicio identifico como importante el margen de beneficio neto, lo cual, se calcula dividiendo el ingreso
 # neto entre los ingresos totales, por ende, nuestras dos variables objetivos serían:
 # 
-# * Total Revenue (Ingresos Totales): Una variable clave para el análisis fundamental, los ingresos totales pueden indicar la 
-# salud general y la tendencia de crecimiento de una empresa. Analizar cómo los ingresos afectan los precios de las acciones 
-# podría ser crucial para comprender si la negociación automatizada puede identificar oportunidades de inversión basadas en 
+# * Total Revenue (Ingresos Totales): Una variable clave para el análisis fundamental, los ingresos totales pueden indicar la
+# salud general y la tendencia de crecimiento de una empresa. Analizar cómo los ingresos afectan los precios de las acciones
+# podría ser crucial para comprender si la negociación automatizada puede identificar oportunidades de inversión basadas en
 # el crecimiento de ingresos.
 # 
-# * Net Income (Ingreso Neto): Representa las ganancias totales después de deducir gastos e impuestos. Esta variable es un 
-# indicador significativo del éxito financiero de una empresa y puede ser vital para entender cómo las máquinas interpretan 
+# * Net Income (Ingreso Neto): Representa las ganancias totales después de deducir gastos e impuestos. Esta variable es un
+# indicador significativo del éxito financiero de una empresa y puede ser vital para entender cómo las máquinas interpretan
 # y reaccionan a los cambios en la rentabilidad.
 
 print(colSums(is.na(df)))
@@ -126,25 +125,35 @@ df$beneficioNeto = log1p(df$beneficioNeto)
 
 hist(df$beneficioNeto, freq = TRUE)
 
+# Calcula la media de la columna beneficioNeto, excluyendo los valores NA
+media_beneficioNeto <- mean(df$beneficioNeto, na.rm = TRUE)
+
+# Reemplaza los valores NA en la columna beneficioNeto con la media calculada
+df$beneficioNeto[is.na(df$beneficioNeto)] <- media_beneficioNeto
+
+# Verifica los cambios (opcional)
+summary(df$beneficioNeto)
+
 sapply(df, function(x) sum(is.na(x)))
 
 
-
-
+# 60% Valores de entrenamiento
+# 20% Valores de prueba
+# 20% Valores de Validación
 
 set.seed(1234)
 trvaltest <- function(dat,prop = c(0.6,0.2,0.2)){
-  nrw = nrow(dat)
-  trnr = as.integer(nrw *prop[1])
-  vlnr = as.integer(nrw*prop[2])
-  set.seed(123)
-  trni = sample(1:nrow(dat),trnr)
-  trndata = dat[trni,]
-  rmng = dat[-trni,]
-  vlni = sample(1:nrow(rmng),vlnr)
-  valdata = rmng[vlni,]
-  tstdata = rmng[-vlni,]
-  mylist = list("trn" = trndata,"val"= valdata,"tst" = tstdata)
+  nrw = nrow(dat) #Define la cantidad de filas
+  trnr = as.integer(nrw *prop[1]) #Obtiene la fila que se encuentra en el 60% de la data
+  vlnr = as.integer(nrw*prop[2]) #Obtiene la fila que se encuentra en el 20% del restante de la data
+  set.seed(123) #Crea la semilla para crear números aleatorios
+  trni = sample(1:nrow(dat),trnr) #Crea vector con índices que conformará el set de datos de entrenamiento
+  trndata = dat[trni,] #Crea el Dataframe de entrenamiento
+  rmng = dat[-trni,] # Crea nuevo datafram con todos los índices menos los elegidos para trni
+  vlni = sample(1:nrow(rmng),vlnr) #Define los índices para el dataframe de validación y prueba
+  valdata = rmng[vlni,] #Crea Dataframe de validación con los índices de vlni
+  tstdata = rmng[-vlni,] ##Crea Dataframe de validación con los índices que no están en vlni
+  mylist = list("trn" = trndata,"val"= valdata,"tst" = tstdata) #Crea una lista de dataframes con los 3 creados.
   return(mylist)
 }
 outdata = trvaltest(df,prop = c(0.6,0.2,0.2))
@@ -163,10 +172,11 @@ y_train = log1p(y_train_orig)
 y_val = log1p(y_val_orig)
 y_test = log1p(y_test_orig)
 
-
 df_train <- df_train[ ,!colnames(df_train)=="beneficioNeto"]
 df_val <- df_val[ ,!colnames(df_val)=="beneficioNeto"]
 df_test <- df_test[ ,!colnames(df_test)=="beneficioNeto"]
 
 
+sum(y_train_orig < -1)
 
+View(df)
