@@ -1,0 +1,456 @@
+---
+title: "Modelo de regresión para la predicción de precios de automóviles"
+subtitle: "Data science essential training"
+author: "DiplomadosOnline.com"
+date: "Mayo, 2022"
+output:
+    rmarkdown::html_document:
+      theme: lumen
+      toc: true
+      toc_depth: 2
+      toc_float: true
+---
+
+Ejecute las siguientes lineas para continuar.
+
+```{r}
+df = read.csv("data.csv", sep=",", header = TRUE)
+
+library(janitor)
+df = clean_names(df)
+
+df$model <- gsub(" ", "_", df$model)
+df$engine_fuel_type <- gsub(" ", "_", df$engine_fuel_type)
+df$driven_wheels <- gsub(" ", "_", df$driven_wheels)
+
+set.seed(1234)
+trvaltest <- function(dat,prop = c(0.6,0.2,0.2)){
+  nrw = nrow(dat)
+  trnr = as.integer(nrw *prop[1])
+  vlnr = as.integer(nrw*prop[2])
+  set.seed(123)
+  trni = sample(1:nrow(dat),trnr)
+  trndata = dat[trni,]
+  rmng = dat[-trni,]
+  vlni = sample(1:nrow(rmng),vlnr)
+  valdata = rmng[vlni,]
+  tstdata = rmng[-vlni,]
+  mylist = list("trn" = trndata,"val"= valdata,"tst" = tstdata)
+  return(mylist)
+}
+outdata = trvaltest(df,prop = c(0.6,0.2,0.2))
+df_train = outdata$trn; df_val = outdata$val; df_test = outdata$tst
+
+library(dplyr)
+y_train_orig =  select(df_train, msrp)
+y_val_orig = select(df_val, msrp)
+y_test_orig = select(df_test, msrp)
+
+y_train = as.matrix(log1p(y_train_orig))
+y_val = as.matrix(log1p(y_val_orig))
+y_test = as.matrix(log1p(y_test_orig))
+
+df_train <- df_train[ ,!colnames(df_train)=="msrp"]
+df_val <- df_val[ ,!colnames(df_val)=="msrp"]
+df_test <- df_test[ ,!colnames(df_test)=="msrp"]
+```
+
+```{r}
+train_linear_regression = function(X,y){
+    ones = as.vector(rep(1, dim(X)[1]))
+    X = cbind(ones, X)
+
+    XTX = t(X) %*% X
+    XTX_inv = solve(XTX)
+    w1 = as.matrix(XTX_inv %*% t(X)) 
+    w =w1 %*% y
+    
+    w
+}
+```
+
+# 3) Resultados
+
+Ahora tenemos una función para entrenar un modelo de regresión lineal a nuestra a nuestra disposición, ası́ que vamos a utilizarla para construir una solución básica simple.
+
+## 3.1 Solución básica simple
+
+Sin embargo, para poder utilizarlo, necesitamos tener algunos datos: una matriz $X$ y un vector con $y$.
+
+Ya hemos preparado la $y$, pero todavía no tenemos la $X$: lo que tenemos ahora mismo es un dataframe, no una matriz.
+
+Ası́ que tenemos que extraer algunas caracterı́sticas de nuestro conjunto de datos para crear esta matriz $X$.
+
+Empezaremos con una forma muy ingenua de crear caracterı́sticas: seleccionaremos algunas caracterı́sticas numéricas y formaremos la matriz $X$ a partir de ellas.
+
+Incluimos las siguientes caracterı́sticas:
+
+- motor cv (engine hp)
+
+- cilindros del motor (engine cylinders)
+
+- consumo en carretera (highway mpg)
+
+- consumo en ciudad (city mpg)
+
+- popularidad (popularity)
+
+y  para los valores faltantes
+
+```{r}
+prepare_X = function(df){
+  df_num = select(df, engine_hp, engine_cylinders, highway_mpg, city_mpg, popularity)
+  df_num[is.na(df_num)] <- 0
+  X = df_num
+  X
+}
+```
+**Entrenamiento:**
+
+Explique cuál es el tratamiento aplicado, en este caso, a los valores faltantes (esto se desprende del código)
+
+Ahora, aplicamos la función de preparación anterior a los datos de prueba df train y lo guardamos en una matriz llamada $X\_train$, es decir, 
+
+```{r}
+X_train = as.matrix(prepare_X(df_train))
+```
+
+La matriz $X\_train$ la usamos como input en nuestro modelo, a través de la función train linear regression que hemos creado, es decir,
+
+```{r}
+b = train_linear_regression(X_train, y_train)
+```
+
+**Entrenamiento**
+
+Imprima los valores de $\beta$  ¿Qué observa?
+
+Acabamos de entrenar el primer modelo. Ahora podemos aplicarlo a los datos de entrenamiento para ver que tan bien predice:
+
+```{r}
+y_pred = b[1] + X_train %*% b[-1]
+```
+Ploteamos los valores predichos y los precios reales,
+
+```{r}
+hist(y_train, col='red')
+hist(y_pred, col='blue', add=TRUE)
+```
+
+**Entrenamiento:**
+
+Describa cada linea del código.
+
+¿Qué finalidad tiene la realización de este plot?
+
+¿Qué puede concluir del gráfico?
+
+## 3.2 RMSE
+
+Ahora, necesitamos una métrica que cuantifique la calidad del modelo.
+
+La más utilizada es el **error cuadrático medio (RMSE)**.
+
+El RMSE nos indica la magnitud de los errores que comete nuestro modelo. Se calcula con la siguiente fórmula:
+
+\[RMSE = \sqrt{\frac{1}{m}\sum_{i=1}^{m}(f(x_{i})-y_{i})^{2}},\]
+
+ es decir, 
+ 
+```{r}
+rmse = function(y, y_pred){
+  error = y_pred - y
+    mse = mean((error ** 2))
+    r = sqrt(mse)
+    r
+}
+    
+```
+**Entrenamiento**
+
+- Aplique la función creada a los vectores $y\_train$, $y\_pred$. ¿Qué puede decir del resultado?
+
+## 3.3 Validación del modelo
+
+Hemos calculado el **RMSE** en el conjunto de entrenamiento. El resultado es útil de conocer, pero no refleja la forma en que se utilizará el modelo posteriormente.
+
+El modelo se utilizará para predecir el precio de los autos que no ha visto antes. Para ello, reservamos un conjunto de validación.
+
+Ya hemos dividido nuestros datos en varias partes: $df\_train$ , $df\_val$ , y $df\_test$ .
+
+También hemos creado una matriz $X\_train$ a partir de $df\_train$ y hemos utilizado $X\_train$ e $y\_train$ para entrenar el modelo.
+
+Ahora tenemos que hacer los mismos pasos para obtener $X\_val$ (una matriz con caracterśticas calculadas a partir del conjunto de datos de validación).
+
+Luego, podemos aplicar el modelo a $X\_val$ para obtener predicciones y compararlas con $y\_val$
+ 
+```{r}
+X_val = as.matrix(prepare_X(df_val))
+
+y_pred = b[1] + X_val %*% b[-1]
+```
+
+```{r}
+rmse(y_val, y_pred)
+```
+
+**Entrenamento:**
+
+¿Qué puede concluir? ¿Hay una mejora?
+
+## 3.4 Ingeniería de características simples
+
+Ya tenemos un modelo de referencia sencillo con características simples. Para mejorar nuestro modelo podemos añadir más características al modelo: creamos otras y las añadimos a las características existentes. 
+
+Este proceso se denomina **ingeniería de características**.
+
+Como ya hemos creado el marco de validación, podemos comprobar fácilmente si la adición de nuevas características mejora la calidad del modelo. 
+
+Nuestro objetivo **es mejorar el RMSE calculado sobre los datos de validación**.
+
+En primer lugar, creamos una nueva característica, "`edad`", a partir de la característica "`year`". 
+
+La edad de un auto debería ser muy útil para predecir su precio: intuitivamente, cuanto más nuevo sea el coche, más caro debería ser.
+
+Dado que el conjunto de datos se creó en 2017, podemos calcular la edad restando el año en que se fabricó el auto de 2017.
+
+Ya sabemos que tendremos que aplicar el mismo preprocesamiento dos veces: a los conjuntos de entrenamiento y de validación. 
+
+Como no queremos repetir el código de extracción de características múltiples veces, vamos a poner esta lógica en la función `prepare_X`.
+
+```{r}
+prepare_X = function(df){
+  features = select(df, engine_hp, engine_cylinders, highway_mpg, city_mpg, popularity)
+  
+  df["edad"] = 2017- df$year
+  
+  df_num = select(df, engine_hp, engine_cylinders, highway_mpg, city_mpg, popularity,edad)
+  df_num[is.na(df_num)] <- 0
+  X = df_num
+  as.matrix(X)
+}
+```
+
+**Entrenamiento**
+
+¿Qué hacemos en cada linea del código?
+
+Probemos si la adición de la característica "`edad`" conlleva alguna mejora:
+
+```{r}
+X_train = prepare_X(df_train)
+b = train_linear_regression(X_train, y_train)
+
+y_pred = b[1] + X_train %*% b[-1]
+print(paste('Entrenamiento:', rmse(y_train, y_pred)))
+
+X_val = prepare_X(df_val)
+y_pred = b[1] + X_val %*% b[-1]
+print(paste('validación:', rmse(y_val, y_pred)))
+```
+
+El error de validación es de $0,51$, lo que supone una buena mejora con respecto a $0,74$, el valor que teníamos en la solución de referencia.
+
+Por tanto, concluimos que añadir la "`edad`" es realmente útil a la hora de hacer predicciones.
+
+También podemos observar la distribución de los valores predichos:
+
+```{r}
+hist(y_val, col='red')
+hist(y_pred, col='blue', add=TRUE)
+```
+
+## 3.5 Manejo de variables categóricas
+
+Vemos que añadir "`edad`" es bastante útil para el modelo. Sigamos añadiendo más características. Una de las columnas que podemos utilizar a continuación es el número de puertas. 
+
+Esta variable parece ser numérica y puede tomar tres valores: 2, 3 y 4 puertas. 
+
+Aunque es tentador poner la variable en el modelo tal cual, no es realmente una variable numérica: no podemos decir que al añadir una puerta más, el precio de un auto crece (o baja) en una determinada cantidad de dinero.La variable es más bien categórica. 
+
+Podemos utilizar las variables categóricas en un modelo de múltiples maneras. Una de las formas más sencillas es codificar dichas variables mediante un conjunto de características binarias, con una característica separada para cada valor distinto.
+
+En nuestro caso, crearemos tres características binarias: `num_puertas_2` , `num_puertas_3` , y `num_puertas_4` . Si el auto tiene dos puertas, `num_doors_2` será 1 y el resto será 0, y así sucesivamente.
+
+Este método de codificación de variables categóricas se denomina **one-hot encoding**.
+
+```{r}
+ library(mltools)
+  library(data.table)
+```
+
+
+```{r}
+prepare_X = function(df){
+  features = select(df, engine_hp, engine_cylinders, highway_mpg, city_mpg, popularity)
+  df["edad"] = 2017- df$year
+  
+  df.table <- as.data.table(df$number_of_doors)
+  df.encoded <- one_hot(df.table)
+  features1 = cbind(features,df.encoded)
+  
+  df.table <- as.data.table(df$make)
+  df.encoded <- one_hot(df.table)
+  features2 = cbind(features1,df.encoded)
+  
+  df.table <- as.data.table(df$engine_fuel_type)
+  df.encoded <- one_hot(df.table)
+  features3 = cbind(features2,df.encoded)
+  
+  df.table <- as.data.table(df$transmission_type)
+  df.encoded <- one_hot(df.table)
+  features4 = cbind(features3,df.encoded)
+
+  df.table <- as.data.table(df$driven_wheels)
+  df.encoded <- one_hot(df.table)
+  features5 = cbind(features4,df.encoded)
+  
+  df.table <- as.data.table(df$market_category)
+  df.encoded <- one_hot(df.table)
+  features6 = cbind(features5,df.encoded)
+  
+  df.table <- as.data.table(df$vehicle_size)
+  df.encoded <- one_hot(df.table)
+  features7 = cbind(features6,df.encoded)
+  
+  df.table <- as.data.table(df$vehicle_style)
+  df.encoded <- one_hot(df.table)
+  features8 = cbind(features7,df.encoded)
+    
+  df_num = features2
+  df_num[is.na(df_num)] <- 0
+  X = as.matrix(df_num)
+  colnames(X) = NULL
+  X
+}
+```
+
+**Entrenamiento**
+
+¿Qué hacemos en cada linea del código?
+
+Comprobemos si este código mejora el RMSE del modelo:
+
+```{r}
+X_train = prepare_X(df_train)
+```
+
+```{r, error=TRUE}
+X_train = prepare_X(df_train)
+b = train_linear_regression(X_train, y_train)
+
+y_pred = b[1] + X_train %*% b[-1]
+print(paste('Entrenamiento :', rmse(y_train, y_pred)))
+
+X_val = prepare_X(df_val)
+y_pred = b[1] + X_val %*% b[-1]
+print(paste('Validación:', rmse(y_val, y_pred)))
+```
+
+Nos arroja que tenemos una matriz singular, esto lopodemos reparar con la regularizaciòn. 
+
+## 3.6 Regularización
+
+Hemos visto que añadir nuevas características no siempre ayuda, y en nuestro caso, hizo las cosas mucho peor. 
+
+La razón de este comportamiento es la inestabilidad numérica.
+
+Recordemos la fórmula de la ecuación normal:
+
+$\beta = (X^{T}X)^{-1}X^{T}y$
+
+La inversión es el problema en nuestro caso, $(X^{T}X)^{-1}$ . A veces, al añadir nuevas columnas a X, podemos añadir accidentalmente una columna que es una combinación de otras columnas.
+
+Cuando esto ocurre, $(X^{T}X)^{-1}$ se vuelve indeterminada o singular, lo que significa que no es no es posible encontrar una inversa para esta matriz. 
+
+En el álgebra lineal numérica, estos problemas se denominan **problemas de inestabilidad numérica**, y se suelen resolver con técnicas de regularización. 
+
+El objetivo de la regularización es asegurarse que la inversa existe, forzando a la matriz a ser invertible. 
+
+Una forma de hacer la regularización es añadir un pequeño número a cada elemento diagonal de la matriz. 
+
+Entonces obtenemos la siguiente fórmula para la regresión lineal:
+
+$\beta = (X^{T}X + r I)^{-1}X^{T}y$
+
+Vamos a crear una nueva función que utilice esta idea e implemente la regresión lineal con regularización.
+
+```{r}
+train_linear_regression_reg = function(X, y, r=0.0){
+    ones = as.vector(rep(1, dim(X)[1]))
+    X = cbind(ones, X)
+
+    XTX = t(X) %*% X
+    n = dim(XTX)[1]
+    diag_mat = diag(n)
+    reg = r * diag_mat
+    XTX = XTX + reg
+    
+    XTX_inv = solve(XTX)
+    w1 = as.matrix(XTX_inv %*% t(X)) 
+    w =w1 %*% y
+    
+    w
+}
+```
+
+```{r}
+X_train = prepare_X(df_train)
+```
+
+Comprobemos qué ocurre con nuestras ponderaciones para diferentes valores de `r` :
+
+```{r}
+for (r in c(0.001, 0.01, 0.1, 1, 10)) {
+  b = train_linear_regression_reg(X_train, y_train, r=r)
+  print(paste(r, b[1], b[13], b[21]))
+}
+```
+
+Vemos que los valores que seleccionamos se hacen más pequeños a medida que `r` crece.
+
+Ahora vamos a comprobar si la regularización ayuda a nuestro problema y qué RMSE obtenemos.
+
+Vamos a ejecutarlo con $r=0.001$:
+
+```{r}
+X_train = prepare_X(df_train)
+b = train_linear_regression_reg(X_train, y_train, r=0.01)
+
+y_pred = b[1] + X_train %*% b[-1]
+print(paste('Entrenamiento :', rmse(y_train, y_pred)))
+
+X_val = prepare_X(df_val)
+y_pred = b[1] + X_val %*% b[-1]
+print(paste('Validación:', rmse(y_val, y_pred)))
+```
+
+## 3.7 Utilización del modelo
+
+Como ya tenemos un modelo, podemos empezar a utilizarlo para predecir el precio de un auto.
+
+Supongamos que un usuario publica el siguiente anuncio en nuestro sitio web:
+
+```{r}
+ad = df_test[2,]
+ad
+```
+
+Nos gustaría sugerir el precio de este auto. Para ello, utilizamos nuestro modelo:
+
+```{r}
+X_test = prepare_X(as.data.frame(ad))
+y_pred = b[1] + X_test %*% b[-1]
+suggestion = expm1(y_pred)
+suggestion
+```
+
+La salida es de $31.840,14$. El precio real de este coche es de $31.120$ dólares, por lo que nuestro modelo no se aleja del precio real.
+
+
+
+
+
+
+
+
